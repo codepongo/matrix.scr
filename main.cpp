@@ -202,11 +202,6 @@ int CALLBACK WinMain(
 		LR_DEFAULTCOLOR);
 
 
-	if (!RegisterClassEx(&wcx))
-	{
-		return -1;
-	}
-
 	RECT rc;
 	SystemParametersInfo(SPI_GETWORKAREA, 0, &rc, 0);
 
@@ -251,5 +246,24 @@ int CALLBACK WinMain(
 	return msg.wParam;
 	UNREFERENCED_PARAMETER(lpCmdLine);
 	UNREFERENCED_PARAMETER(hPrevInstance);
+}
+#else
+BOOL WINAPI RegisterDialogClasses(
+	HANDLE hInst
+) {
+	return TRUE;
+}
+BOOL WINAPI ScreenSaverConfigureDialog(
+	HWND   hDlg,
+	UINT   message,
+	WPARAM wParam,
+	LPARAM lParam
+) {
+	return TRUE;
+	UNREFERENCED_PARAMETER(hDlg);
+	UNREFERENCED_PARAMETER(message);
+	UNREFERENCED_PARAMETER(wParam);
+	UNREFERENCED_PARAMETER(lParam);
+
 }
 #endif 
