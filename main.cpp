@@ -2,8 +2,9 @@
 #include <scrnsave.h>
 #include <time.h>
 #include "resource.h"
-
+#if defined(NDEBUG)
 #pragma comment(lib, "scrnsavw.lib")
+#endif
 #pragma comment(lib, "comctl32.lib")
 
 #define ID_TIMER1 100
@@ -17,7 +18,7 @@ typedef struct _tagPlace{
 	INT nPict2;
 }PLACE;
 
-const INT MAX_NUM = 100;
+const INT MAX_NUM = 5000;
 
 LRESULT WINAPI ScreenSaverProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp)
 {
@@ -31,12 +32,13 @@ LRESULT WINAPI ScreenSaverProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp)
 	HINSTANCE hInst;
 	INT n = 0, m = 0;
 
-	switch(msg) {
-	case WM_CREATE:
+	switch (msg) {
+	case WM_CREATE:		
 		GetWindowRect(hWnd, &rc);
-		w = rc.right;
-		h = rc.bottom;
-		ch = (INT)(h / 15);
+		
+		w = rc.right - rc.left;
+		h = rc.bottom - rc.top;
+		ch = (INT)(w / 15);
 
 		srand((unsigned)time(NULL));
 		hInst = (HINSTANCE)GetWindowLong(hWnd, GWL_HINSTANCE);
@@ -107,7 +109,8 @@ LRESULT WINAPI ScreenSaverProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp)
 			break;
 		}
 		break;
-
+	case WM_ERASEBKGND:
+		return 0;
 	case WM_PAINT:
 		hdc_wnd = BeginPaint(hWnd, &ps);
 		BitBlt(hdc_wnd, 0, 0, w, h, hdc_main, 0, 0, SRCCOPY);
@@ -133,15 +136,120 @@ LRESULT WINAPI ScreenSaverProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp)
 	default:
         break;
 	}
+#if defined(NDEBUG)
 	return DefScreenSaverProc(hWnd, msg, wp, lp);
+#else
+	return DefWindowProc(hWnd, msg, wp, lp);
+#endif
 }
 
-BOOL WINAPI ScreenSaverConfigureDialog(HWND, UINT, WPARAM, LPARAM)
-{
-	return TRUE;
-}
+#if !defined(NDEBUG)
+int CALLBACK WinMain(
+	_In_ HINSTANCE hinstance,
+	_In_ HINSTANCE hPrevInstance,
+	_In_ LPSTR     lpCmdLine,
+	_In_ int       nCmdShow
+) {
 
-BOOL WINAPI RegisterDialogClasses(HANDLE)
-{
-    return TRUE;
+	HANDLE hToken;
+	LUID sedebugnameValue;
+	TOKEN_PRIVILEGES tkp;
+	if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken))
+	{
+		return -1;
+	}
+	if (!LookupPrivilegeValue(NULL, SE_DEBUG_NAME, &sedebugnameValue))
+	{
+		CloseHandle(hToken);
+		return -1;
+	}
+	tkp.PrivilegeCount = 1;
+	tkp.Privileges[0].Luid = sedebugnameValue;
+	tkp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+	if (!AdjustTokenPrivileges(hToken, FALSE, &tkp, sizeof(tkp), NULL, NULL))
+	{
+		CloseHandle(hToken);
+		return -1;
+	}
+
+	MSG msg;
+
+	WNDCLASSEX wcx;
+
+	// Fill in the window class structure with parameters 
+	// that describe the main window. 
+
+	wcx.cbSize = sizeof(wcx);          // size of structure 
+	wcx.style = CS_HREDRAW |
+		CS_VREDRAW;                    // redraw if size changes 
+	wcx.lpfnWndProc = ScreenSaverProc;     // points to window procedure 
+	wcx.cbClsExtra = 0;                // no extra class memory 
+	wcx.cbWndExtra = 0;                // no extra window memory 
+	wcx.hInstance = hinstance;         // handle to instance 
+	wcx.hIcon = LoadIcon(NULL,
+		IDI_APPLICATION);              // predefined app. icon 
+	wcx.hCursor = LoadCursor(NULL,
+		IDC_ARROW);                    // predefined arrow 
+	wcx.hbrBackground = (HBRUSH)GetStockObject(
+		WHITE_BRUSH);                  // white background brush 
+	wcx.lpszMenuName = L"MainMenu";    // name of menu resource 
+	wcx.lpszClassName = L"MainWClass";  // name of window class 
+	wcx.hIconSm = (HICON)LoadImage(hinstance, // small class icon 
+		MAKEINTRESOURCE(5),
+		IMAGE_ICON,
+		GetSystemMetrics(SM_CXSMICON),
+		GetSystemMetrics(SM_CYSMICON),
+		LR_DEFAULTCOLOR);
+
+
+	if (!RegisterClassEx(&wcx))
+	{
+		return -1;
+	}
+
+	RECT rc;
+	SystemParametersInfo(SPI_GETWORKAREA, 0, &rc, 0);
+
+	int w = rc.right - rc.left; //GetSystemMetrics(SM_CXSCREEN);
+	int h = rc.bottom - rc.top;// GetSystemMetrics(SM_CYSCREEN);
+	HWND hwnd;
+
+
+	// Create the main window. 
+
+	hwnd = CreateWindow(
+		L"MainWClass",        // name of window class 
+		L"Sample",            // title-bar string 
+		WS_OVERLAPPEDWINDOW, // top-level window 
+		0,       // default horizontal position 
+		0,       // default vertical position 
+		w,       // default width 
+		h,       // default height 
+		(HWND)NULL,         // no owner window 
+		(HMENU)NULL,        // use class menu 
+		hinstance,           // handle to application instance 
+		(LPVOID)NULL);      // no window-creation data 
+
+	if (!hwnd)
+		return -1;
+
+	// Show the window and send a WM_PAINT message to the window 
+	// procedure. 
+	LONG l = GetWindowLong(hwnd, GWL_STYLE);
+	SetWindowLong(hwnd, GWL_STYLE, l & ~WS_MAXIMIZEBOX);
+
+	ShowWindow(hwnd, nCmdShow);
+	UpdateWindow(hwnd);
+	
+
+	BOOL fGotMessage;
+	while ((fGotMessage = GetMessage(&msg, (HWND)NULL, 0, 0)) != 0 && fGotMessage != -1)
+	{
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);
+	}
+	return msg.wParam;
+	UNREFERENCED_PARAMETER(lpCmdLine);
+	UNREFERENCED_PARAMETER(hPrevInstance);
 }
+#endif 
